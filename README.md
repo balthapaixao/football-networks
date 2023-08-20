@@ -1,6 +1,10 @@
 # Football Networks
 
-This repository is dedicated for the codes of my Masters Degree focused in the field of Complex Networks Applied to the Football Context.
+This repository is dedicated for the codes of Masters Degree focused in the field of Complex Networks Applied to the Football Context.
+
+## Author
+
+Balthazar Paixao - Computer Scientist and Data Engineer At Platform of Data Science applied to Health at Fiocruz.
 
 ## Data
 
