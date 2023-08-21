@@ -8,7 +8,7 @@ Balthazar Paixao - Computer Scientist and Data Engineer At Platform of Data Scie
 
 ## Data
 
-Statsbomb Open Data is used in this project. The data is available in the following link: https://github.com/statsbomb/open-data
+Statsbomb Open Data is used in this project. The data is available in the following link: [Statsbomb Open-Data](https://github.com/statsbomb/open-data)
 
 ## Requirements
 
