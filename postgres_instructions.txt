@@ -1,0 +1,18 @@
+
+Create docker image
+    docker build -t db_football_networks .
+    
+Create .env file
+    POSTGRES_USER=balthapaixao
+    POSTGRES_PASSWORD=...
+    POSTGRES_HOST=localhost
+    POSTGRES_PORT=5432
+
+Start postgres docker 
+    docker run --name football_networks -v ./data/db/data:/var/lib/postgresql/data  --env-file .env -p 5432:5432 -d db_football_networks
+
+Enter in docker 
+    sudo docker exec -it football_networks psql -U balthapaixao -d football_networks
+
+Create schema
+    sudo docker exec -it football_networks psql -U balthapaixao -c "CREATE SCHEMA metrics;"
