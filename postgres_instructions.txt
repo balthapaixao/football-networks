@@ -1,7 +1,7 @@
 
 Create docker image
     docker build -t db_football_networks .
-    
+
 Create .env file
     POSTGRES_USER=balthapaixao
     POSTGRES_PASSWORD=...
