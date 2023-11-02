@@ -4,7 +4,7 @@ This repository is dedicated for the codes of Masters Degree focused in the fiel
 
 ## Author
 
-Balthazar Paixao - Computer Scientist and Data Engineer At Platform of Data Science applied to Health at Fiocruz.
+Balthazar Paixao - Computer Scientist and Data Engineer At Platform of Data Science applied to Health at Fiocruz. Master's student at CEFET/RJ.
 
 ## Data
 
