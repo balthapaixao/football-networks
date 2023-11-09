@@ -161,3 +161,7 @@ cython_debug/
 
 
 data/db*
+data/processed*
+data/*metrics*
+viz*
+analysis/FAME*

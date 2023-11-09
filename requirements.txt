@@ -4,3 +4,5 @@ pandas==2.0.3
 pip-chill==1.0.3
 scipy==1.11.2
 mplsoccer==1.2.1
+shapely
+statsbombpy
