@@ -7,6 +7,7 @@ Create .env file
     POSTGRES_PASSWORD=...
     POSTGRES_HOST=localhost
     POSTGRES_PORT=5432
+    POSTGRES_DB=football_networks
 
 Start postgres docker 
     docker run --name football_networks -v ./data/db/data:/var/lib/postgresql/data  --env-file .env -p 5432:5432 -d db_football_networks
