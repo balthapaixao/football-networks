@@ -1,6 +1,6 @@
 # Football Networks
 
-This repository is dedicated for the codes of Masters Degree focused in the field of Complex Networks Applied to the Football Context.
+This repository is dedicated for the codes of Masters Degree focused in the field of Complex Networks Applied to the Football/Soccer Context.
 
 ## Author
 
