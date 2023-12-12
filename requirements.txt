@@ -1,4 +1,4 @@
-apache-airflow==2.3.3
+apache-airflow==2.7.3
 apturl==0.5.2
 awscli==1.22.34
 bcrypt==3.2.0
