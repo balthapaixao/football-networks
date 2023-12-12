@@ -164,8 +164,6 @@ data/db*
 data/processed*
 data/*metrics*
 viz*
-analysis/FAME*
+*FAME*
 analysis/assignments/dev_statsbomb.ipynb
-analysis/assignments/ENTREGA REDES 22-12.ipynb
-analysis/assignments/pagerank.ipynb
-analysis/assignments/page-rank-passes.ipynb
+*unpublished/
