@@ -1,140 +1,97 @@
 import sqlite3
 import os
 from pathlib import Path
+import logging
 
 class FootballDatabaseManager:
     def __init__(self, db_path='data/football_events.db'):
         """Initialize the database manager."""
         self.db_path = db_path
         self._ensure_data_directory()
-        self.conn = None
-        self.cursor = None
 
     def _ensure_data_directory(self):
         """Ensure the data directory exists."""
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
 
-    def connect(self):
-        """Connect to the SQLite database."""
-        self.conn = sqlite3.connect(self.db_path)
-        self.cursor = self.conn.cursor()
-
-    def disconnect(self):
-        """Disconnect from the SQLite database."""
-        if self.conn:
-            self.conn.close()
-            self.conn = None
-            self.cursor = None
+    def get_connection(self):
+        """Create and configure a new database connection."""
+        conn = sqlite3.connect(self.db_path, timeout=60.0)
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.execute("PRAGMA cache_size=-4000000")
+        conn.execute("PRAGMA busy_timeout=60000")
+        return conn
 
     def initialize_database(self):
-        """Initialize the database with the schema."""
+        """Initialize the database schema."""
+        conn = self.get_connection()
         try:
-            self.connect()
-            
-            # Read and execute the SQL script
-            script_path = Path('scripts/create_database.sql')
-            with open(script_path, 'r') as f:
-                sql_script = f.read()
-            
-            # Execute the script
-            self.cursor.executescript(sql_script)
-            self.conn.commit()
-            
-            print("Database initialized successfully!")
-            
-        except Exception as e:
-            print(f"Error initializing database: {str(e)}")
-            raise
+            with open('scripts/create_database.sql', 'r') as f:
+                conn.executescript(f.read())
+            conn.commit()
         finally:
-            self.disconnect()
+            conn.close()
 
-    def insert_event(self, event_data):
-        """
-        Insert a single event into the FactEvents table.
-        
-        Args:
-            event_data (dict): Dictionary containing event data
-        """
+    def batch_insert_dimension_data(self, table_name, data_list):
+        """Insert multiple records into dimension tables."""
+        if not data_list:
+            return
+            
+        conn = self.get_connection()
         try:
-            self.connect()
-            
-            query = """
-            INSERT INTO FactEvents (
-                event_id, match_id, player_id, team_id, timestamp,
-                period_id, location_x, location_y, event_type_id,
-                possession_id, duration
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """
-            
-            self.cursor.execute(query, (
-                event_data['event_id'],
-                event_data['match_id'],
-                event_data['player_id'],
-                event_data['team_id'],
-                event_data['timestamp'],
-                event_data['period_id'],
-                event_data['location_x'],
-                event_data['location_y'],
-                event_data['event_type_id'],
-                event_data['possession_id'],
-                event_data['duration']
-            ))
-            
-            self.conn.commit()
-            
-        finally:
-            self.disconnect()
-
-    def insert_dimension_data(self, table_name, data):
-        """
-        Insert data into dimension tables.
-        
-        Args:
-            table_name (str): Name of the dimension table
-            data (dict): Dictionary containing the dimension data
-        """
-        try:
-            self.connect()
-            
-            # Create the placeholders for the SQL query
-            columns = ', '.join(data.keys())
-            placeholders = ', '.join(['?' for _ in data])
+            cursor = conn.cursor()
+            # Get columns from first record
+            columns = list(data_list[0].keys())
+            placeholders = ', '.join(['?' for _ in columns])
+            columns_str = ', '.join(columns)
             
             query = f"""
-            INSERT INTO {table_name} ({columns})
-            VALUES ({placeholders})
+                INSERT OR IGNORE INTO {table_name} ({columns_str})
+                VALUES ({placeholders})
             """
             
-            self.cursor.execute(query, tuple(data.values()))
-            self.conn.commit()
+            # Convert list of dicts to list of tuples
+            values = [tuple(record[col] for col in columns) for record in data_list]
             
+            cursor.executemany(query, values)
+            conn.commit()
+        except Exception as e:
+            logging.error(f"Error batch inserting into {table_name}: {str(e)}")
+            conn.rollback()
+            raise
         finally:
-            self.disconnect()
+            conn.close()
 
-    def execute_query(self, query, params=None):
-        """
-        Execute a custom SQL query.
-        
-        Args:
-            query (str): SQL query to execute
-            params (tuple): Optional parameters for the query
+    def batch_insert_events(self, event_data_list):
+        """Insert multiple events in a batch."""
+        if not event_data_list:
+            return
             
-        Returns:
-            list: Query results
-        """
+        conn = self.get_connection()
         try:
-            self.connect()
+            cursor = conn.cursor()
+            # Get columns from first record
+            columns = list(event_data_list[0].keys())
+            placeholders = ', '.join(['?' for _ in columns])
+            columns_str = ', '.join(columns)
             
-            if params:
-                self.cursor.execute(query, params)
-            else:
-                self.cursor.execute(query)
-                
-            results = self.cursor.fetchall()
-            return results
+            query = f"""
+                INSERT OR IGNORE INTO FactEvents ({columns_str})
+                VALUES ({placeholders})
+            """
             
+            # Convert list of dicts to list of tuples
+            values = [tuple(record[col] for col in columns) for record in event_data_list]
+            
+            cursor.executemany(query, values)
+            conn.commit()
+        except Exception as e:
+            logging.error(f"Error batch inserting events: {str(e)}")
+            conn.rollback()
+            raise
         finally:
-            self.disconnect()
+            conn.close()
 
 if __name__ == "__main__":
     # Example usage
