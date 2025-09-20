@@ -182,342 +182,76 @@ def glauco_example(strict=True):
     """
     if strict:
         sql_query = """
-        WITH pass_sequence AS (
-            SELECT 
-                e.id,
-                e.match_id,
-                e.possession,
-                json_extract(json(e.team), '$.name') as team_name,
-                e.minute,
-                e.second,
-                json_extract(json(e.player), '$.name') as player_name,
-                json_extract(json(e.position), '$.name') as position_name,
-                json_extract(json(e.pass), '$.recipient.name') as pass_recipient_name,
-                CAST(json_extract(json(e.pass), '$.length') AS FLOAT) as pass_length,
-                json_extract(json(e.pass), '$.height.name') as pass_height,
-                json_extract(json(e.pass), '$.outcome.name') as pass_outcome,
-                json_extract(json(e.type), '$.name') as event_type
-            FROM events e
-            WHERE json_extract(json(e.type), '$.name') = 'Pass'
-        ),
-        
-        goalkeeper_pass AS (
+                WITH defender_to_midfield AS (
+            -- First pass: Defender to midfielder
             SELECT 
                 e1.match_id,
-                e1.possession,
-                e1.team_name,
-                e1.minute as gk_minute,
-                e1.second as gk_second,
-                e1.player_name as gk_name,
-                e1.pass_recipient_name as defender_name,
-                e1.id as pass_id,
-                e1.pass_length as gk_pass_length,
-                e1.pass_height as gk_pass_height
-            FROM pass_sequence e1
-            WHERE e1.position_name = 'Goalkeeper'
-            AND e1.pass_outcome IS NULL
+                e1.possession_id,
+                e1.timestamp as first_pass_time,
+                e1.player_id as defender_id,
+                e2.player_id as midfielder_id,
+                e1.location_x as pass_x,
+                e1.location_y as pass_y
+            FROM FactEvents e1
+            JOIN FactEvents e2 
+                ON e1.possession_id = e2.possession_id
+                AND e1.match_id = e2.match_id
+                AND e2.timestamp > e1.timestamp
+            WHERE e1.event_type = 'Pass'
+            AND e2.event_type = 'Ball Receipt*'
+            -- Defender is in defensive third
+            AND e1.location_x BETWEEN 0 AND 40
+            -- Midfielder is in middle third
+            AND e2.location_x BETWEEN 40 AND 80
         ),
-
-        defender_pass AS (
+        midfield_to_wing AS (
+            -- Second pass: Midfielder to right winger
             SELECT 
-                e2.match_id,
-                e2.possession,
-                e2.team_name,
-                e2.minute as def_minute,
-                e2.second as def_second,
-                e2.player_name as defender_name,
-                e2.pass_recipient_name as rb_name,
-                e2.id as pass_id,
-                e2.pass_length as def_pass_length,
-                e2.pass_height as def_pass_height,
-                gp.gk_name,
-                gp.gk_minute,
-                gp.gk_second,
-                gp.gk_pass_length,
-                gp.gk_pass_height
-            FROM pass_sequence e2
-            JOIN goalkeeper_pass gp 
-                ON e2.match_id = gp.match_id 
-                AND e2.possession = gp.possession
-                AND e2.player_name = gp.defender_name
-            WHERE e2.pass_outcome IS NULL
-            AND e2.minute >= gp.gk_minute
-            AND (e2.minute > gp.gk_minute OR e2.second > gp.gk_second)
+                d.*,
+                e3.timestamp as second_pass_time,
+                e3.player_id as winger_id,
+                e3.location_x as winger_x,
+                e3.location_y as winger_y
+            FROM defender_to_midfield d
+            JOIN FactEvents e3
+                ON d.possession_id = e3.possession_id
+                AND d.match_id = e3.match_id
+                AND e3.timestamp > d.first_pass_time
+            WHERE e3.event_type = 'Pass'
+            -- Right winger is on the right wing
+            AND e3.location_y BETWEEN 60 AND 80
         ),
-
-        rb_pass AS (
+        final_sequence AS (
+            -- Final shot and goal
             SELECT 
-                e3.match_id,
-                e3.possession,
-                e3.team_name,
-                e3.minute as rb_minute,
-                e3.second as rb_second,
-                e3.player_name as rb_name,
-                e3.pass_recipient_name as rw_name,
-                e3.id as pass_id,
-                e3.pass_length as rb_pass_length,
-                e3.pass_height as rb_pass_height,
-                dp.*
-            FROM pass_sequence e3
-            JOIN defender_pass dp 
-                ON e3.match_id = dp.match_id 
-                AND e3.possession = dp.possession
-                AND e3.player_name = dp.rb_name
-            WHERE e3.pass_outcome IS NULL
-            AND e3.minute >= dp.def_minute
-            AND (e3.minute > dp.def_minute OR e3.second > dp.def_second)
-        ),
-
-        rw_pass AS (
-            SELECT 
-                e4.match_id,
-                e4.possession,
-                e4.team_name,
-                e4.minute as rw_minute,
-                e4.second as rw_second,
-                e4.player_name as rw_name,
-                e4.pass_recipient_name as lw_name,
-                e4.id as pass_id,
-                e4.pass_length as rw_pass_length,
-                e4.pass_height as rw_pass_height,
-                rp.*
-            FROM pass_sequence e4
-            JOIN rb_pass rp 
-                ON e4.match_id = rp.match_id 
-                AND e4.possession = rp.possession
-                AND e4.player_name = rp.rw_name
-            WHERE e4.pass_outcome IS NULL
-            AND e4.minute >= rp.rb_minute
-            AND (e4.minute > rp.rb_minute OR e4.second > rp.rb_second)
-        ),
-
-        lw_shot AS (
-            SELECT 
-                e5.match_id,
-                e5.possession,
-                json_extract(json(e5.team), '$.name') as team_name,
-                e5.minute as shot_minute,
-                e5.second as shot_second,
-                json_extract(json(e5.player), '$.name') as lw_name,
-                json_extract(json(e5.shot), '$.outcome.name') as shot_outcome,
-                e5.id as shot_id,
-                CAST(json_extract(json(e5.shot), '$.statsbomb_xg') AS FLOAT) as xg,
-                json_extract(json(e5.shot), '$.first_time') as first_time_shot,
-                rwp.*
-            FROM events e5
-            JOIN rw_pass rwp 
-                ON e5.match_id = rwp.match_id 
-                AND e5.possession = rwp.possession
-                AND json_extract(json(e5.player), '$.name') = rwp.lw_name
-            WHERE json_extract(json(e5.type), '$.name') = 'Shot'
-            AND e5.minute >= rwp.rw_minute
-            AND (e5.minute > rwp.rw_minute OR e5.second > rwp.rw_second)
+                m.*,
+                e4.timestamp as shot_time,
+                e4.location_x as shot_x,
+                e4.location_y as shot_y
+            FROM midfield_to_wing m
+            JOIN FactEvents e4
+                ON m.possession_id = e4.possession_id
+                AND m.match_id = e4.match_id
+                AND e4.timestamp > m.second_pass_time
+            WHERE e4.event_type = 'Shot'
         )
-
         SELECT 
-            ls.team_name,
-            m.competition_stage_name,
-            m.home_team_name,
-            m.away_team_name,
-            -- Sequence timing
-            ls.gk_minute || ':' || ls.gk_second as sequence_start,
-            ls.shot_minute || ':' || ls.shot_second as sequence_end,
-            -- Player sequence
-            ls.gk_name as "1. Goalkeeper",
-            ls.defender_name as "2. Defender",
-            ls.rb_name as "3. Right Back",
-            ls.rw_name as "4. Right Winger",
-            ls.lw_name as "5. Left Winger (Scorer)",
-            -- Pass details
-            ls.gk_pass_height as "GK Pass Type",
-            ls.gk_pass_length as "GK Pass Length",
-            ls.def_pass_height as "DEF Pass Type",
-            ls.def_pass_length as "DEF Pass Length",
-            ls.rb_pass_height as "RB Pass Type",
-            ls.rb_pass_length as "RB Pass Length",
-            ls.rw_pass_height as "RW Pass Type",
-            ls.rw_pass_length as "RW Pass Length",
-            -- Shot details
-            ls.xg as "Expected Goals",
-            CASE WHEN ls.first_time_shot = 'true' THEN 'Yes' ELSE 'No' END as "First Time Shot"
-        FROM lw_shot ls
-        JOIN matches m ON ls.match_id = m.match_id
-        WHERE ls.shot_outcome = 'Goal'
-        ORDER BY ls.match_id, ls.shot_minute, ls.shot_second;
-        """
-    else:
-        sql_query = """
-        WITH pass_sequence AS (
-            SELECT 
-                e.id,
-                e.match_id,
-                e.possession,
-                json_extract(json(e.team), '$.name') as team_name,
-                e.minute,
-                e.second,
-                json_extract(json(e.player), '$.name') as player_name,
-                json_extract(json(e.position), '$.name') as position_name,
-                json_extract(json(e.pass), '$.recipient.name') as pass_recipient_name,
-                CAST(json_extract(json(e.pass), '$.length') AS FLOAT) as pass_length,
-                json_extract(json(e.pass), '$.height.name') as pass_height,
-                json_extract(json(e.pass), '$.outcome.name') as pass_outcome,
-                json_extract(json(e.type), '$.name') as event_type
-            FROM events e
-            WHERE json_extract(json(e.type), '$.name') = 'Pass'
-        ),
-        
-        goalkeeper_pass AS (
-            SELECT 
-                e1.match_id,
-                e1.possession,
-                e1.team_name,
-                e1.minute as gk_minute,
-                e1.second as gk_second,
-                e1.player_name as gk_name,
-                e1.pass_recipient_name as next_player_name,
-                e1.id as pass_id,
-                e1.pass_length as gk_pass_length,
-                e1.pass_height as gk_pass_height
-            FROM pass_sequence e1
-            WHERE e1.position_name LIKE '%Goalkeeper%'
-            AND e1.pass_outcome IS NULL
-        ),
-
-        second_pass AS (
-            SELECT 
-                e2.match_id,
-                e2.possession,
-                e2.team_name,
-                e2.minute as second_minute,
-                e2.second as second_second,
-                e2.player_name as second_player_name,
-                e2.position_name as second_position,
-                e2.pass_recipient_name as third_player_name,
-                e2.id as pass_id,
-                e2.pass_length as second_pass_length,
-                e2.pass_height as second_pass_height,
-                gp.gk_name,
-                gp.gk_minute,
-                gp.gk_second,
-                gp.gk_pass_length,
-                gp.gk_pass_height
-            FROM pass_sequence e2
-            JOIN goalkeeper_pass gp 
-                ON e2.match_id = gp.match_id 
-                AND e2.possession = gp.possession
-                AND e2.player_name = gp.next_player_name
-            WHERE e2.pass_outcome IS NULL
-            AND (e2.position_name LIKE '%Back%' OR e2.position_name LIKE '%Center Back%' OR e2.position_name LIKE '%Defence%')
-            AND e2.minute >= gp.gk_minute
-            AND (e2.minute > gp.gk_minute OR e2.second > gp.gk_second)
-        ),
-
-        third_pass AS (
-            SELECT 
-                e3.match_id,
-                e3.possession,
-                e3.team_name,
-                e3.minute as third_minute,
-                e3.second as third_second,
-                e3.player_name as third_player_name,
-                e3.position_name as third_position,
-                e3.pass_recipient_name as fourth_player_name,
-                e3.id as pass_id,
-                e3.pass_length as third_pass_length,
-                e3.pass_height as third_pass_height,
-                sp.*
-            FROM pass_sequence e3
-            JOIN second_pass sp 
-                ON e3.match_id = sp.match_id 
-                AND e3.possession = sp.possession
-                AND e3.player_name = sp.third_player_name
-            WHERE e3.pass_outcome IS NULL
-            AND e3.minute >= sp.second_minute
-            AND (e3.minute > sp.second_minute OR e3.second > sp.second_second)
-        ),
-
-        fourth_pass AS (
-            SELECT 
-                e4.match_id,
-                e4.possession,
-                e4.team_name,
-                e4.minute as fourth_minute,
-                e4.second as fourth_second,
-                e4.player_name as fourth_player_name,
-                e4.position_name as fourth_position,
-                e4.pass_recipient_name as final_player_name,
-                e4.id as pass_id,
-                e4.pass_length as fourth_pass_length,
-                e4.pass_height as fourth_pass_height,
-                tp.*
-            FROM pass_sequence e4
-            JOIN third_pass tp 
-                ON e4.match_id = tp.match_id 
-                AND e4.possession = tp.possession
-                AND e4.player_name = tp.fourth_player_name
-            WHERE e4.pass_outcome IS NULL
-            AND e4.minute >= tp.third_minute
-            AND (e4.minute > tp.third_minute OR e4.second > tp.third_second)
-        ),
-
-        final_shot AS (
-            SELECT 
-                e5.match_id,
-                e5.possession,
-                json_extract(json(e5.team), '$.name') as team_name,
-                e5.minute as shot_minute,
-                e5.second as shot_second,
-                json_extract(json(e5.player), '$.name') as scorer_name,
-                json_extract(json(e5.position), '$.name') as scorer_position,
-                json_extract(json(e5.shot), '$.outcome.name') as shot_outcome,
-                e5.id as shot_id,
-                CAST(json_extract(json(e5.shot), '$.statsbomb_xg') AS FLOAT) as xg,
-                json_extract(json(e5.shot), '$.first_time') as first_time_shot,
-                fp.*
-            FROM events e5
-            JOIN fourth_pass fp 
-                ON e5.match_id = fp.match_id 
-                AND e5.possession = fp.possession
-                AND json_extract(json(e5.player), '$.name') = fp.final_player_name
-            WHERE json_extract(json(e5.type), '$.name') = 'Shot'
-            AND e5.minute >= fp.fourth_minute
-            AND (e5.minute > fp.fourth_minute OR e5.second > fp.fourth_second)
-        )
-
-        SELECT 
-            fs.team_name,
-            m.competition_stage_name,
-            m.home_team_name,
-            m.away_team_name,
-            -- Sequence timing
-            fs.gk_minute || ':' || fs.gk_second as sequence_start,
-            fs.shot_minute || ':' || fs.shot_second as sequence_end,
-            -- Player sequence
-            fs.gk_name as "1. Goalkeeper",
-            fs.second_player_name as "2. Player",
-            fs.second_position as "2. Position",
-            fs.third_player_name as "3. Player",
-            fs.third_position as "3. Position",
-            fs.fourth_player_name as "4. Player",
-            fs.fourth_position as "4. Position",
-            fs.scorer_name as "5. Scorer",
-            fs.scorer_position as "5. Position",
-            -- Pass details
-            fs.gk_pass_height as "GK Pass Type",
-            fs.gk_pass_length as "GK Pass Length",
-            fs.second_pass_height as "2nd Pass Type",
-            fs.second_pass_length as "2nd Pass Length",
-            fs.third_pass_height as "3rd Pass Type",
-            fs.third_pass_length as "3rd Pass Length",
-            fs.fourth_pass_height as "4th Pass Type",
-            fs.fourth_pass_length as "4th Pass Length",
-            -- Shot details
-            fs.xg as "Expected Goals",
-            CASE WHEN fs.first_time_shot = 'true' THEN 'Yes' ELSE 'No' END as "First Time Shot"
-        FROM final_shot fs
-        JOIN matches m ON fs.match_id = m.match_id
-        WHERE fs.shot_outcome = 'Goal'
-        ORDER BY fs.match_id, fs.shot_minute, fs.shot_second;
+            m.match_date,
+            m.competition_name,
+            t.team_name,
+            p1.player_name as defender,
+            p2.player_name as midfielder,
+            p3.player_name as winger,
+            fs.shot_time,
+            fs.shot_x,
+            fs.shot_y
+        FROM final_sequence fs
+        JOIN DimMatch m ON fs.match_id = m.match_id
+        JOIN DimTeam t ON fs.team_id = t.team_id
+        JOIN DimPlayer p1 ON fs.defender_id = p1.player_id
+        JOIN DimPlayer p2 ON fs.midfielder_id = p2.player_id
+        JOIN DimPlayer p3 ON fs.winger_id = p3.player_id
+        ORDER BY m.match_date, fs.shot_time;
         """
     
     eq = EventQuery()
@@ -534,5 +268,5 @@ if __name__ == "__main__":
     # Run both strict and flexible searches
     print("\nStrict position matching:")
     glauco_example(strict=True)
-    print("\nFlexible position matching:")
-    glauco_example(strict=False) 
+    # print("\nFlexible position matching:")
+    # glauco_example(strict=False) 
